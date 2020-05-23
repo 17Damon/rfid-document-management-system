@@ -1,0 +1,26 @@
+{
+  "name": "nextjs-socketio-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node ssr-server.js",
+    "build": "next build",
+    "start": "cross-env NODE_ENV=production node ssr-server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@umijs/hooks": "^1.9.2",
+    "@zeit/next-css": "^1.0.1",
+    "antd": "^4.2.0",
+    "arangojs": "^6.14.1",
+    "cross-env": "^7.0.2",
+    "express": "^4.17.1",
+    "next": "^9.3.6",
+    "react": "^16.13.1",
+    "react-dom": "^16.13.1",
+    "socket.io": "^2.3.0"
+  }
+}

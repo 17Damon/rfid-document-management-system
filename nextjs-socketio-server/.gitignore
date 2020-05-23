@@ -1,0 +1,17 @@
+logs/
+npm-debug.log
+yarn-error.log
+node_modules/
+package-lock.json
+yarn.lock
+coverage/
+.idea/
+.next/
+secret.json
+run/
+.DS_Store
+*.sw*
+*.un~
+config/secret.json
+app/assets/swagger/swagger.json
+.vscode/settings.json
