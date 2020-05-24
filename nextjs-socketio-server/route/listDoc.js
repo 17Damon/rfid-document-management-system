@@ -1,126 +1,46 @@
 import {useEffect, useContext} from 'react';
 import {useRequest} from '@umijs/hooks';
-import {Table, Space, PageHeader, Button, Badge} from 'antd';
+import {Table, Space, PageHeader, Button, Badge, message} from 'antd';
 import {AppContext} from '../pages/index';
 
-const columns = [
-  {
-    title: '学号',
-    dataIndex: 'student_id',
-    key: 'student_id',
-  },
-  {
-    title: '姓名',
-    dataIndex: 'name',
-    key: 'name',
-    render: text => <a>{text}</a>,
-  },
-  {
-    title: '班级',
-    dataIndex: 'class',
-    key: 'class',
-  },
-  {
-    title: '出生日期',
-    dataIndex: 'birth',
-    key: 'birth',
-  },
-  {
-    title: '学院',
-    dataIndex: 'department',
-    key: 'department',
-  },
-  {
-    title: '出生日期',
-    dataIndex: 'birth',
-    key: 'birth',
-  },
-  {
-    title: '储位名称',
-    dataIndex: 'box_name',
-    key: 'box_name',
-  },
-  {
-    title: '档案状态',
-    dataIndex: 'doc_status',
-    key: 'doc_status',
-    render: function (text, record) {
-      if (text) return <Badge color="blue" text="在库"/>;
-      return <Badge color="yellow" text="借出"/>;
-    },
-  },
-  {
-    title: '操作',
-    key: 'action',
-    render: (text, record) => (
-      <Space size="middle">
-        <a>删除</a>
-      </Space>
-    ),
-  },
-];
-
-const columns1 = [
-  {
-    title: '编号',
-    dataIndex: '_key',
-    key: '_key',
-  },
-  {
-    title: '名称',
-    dataIndex: 'name',
-    key: 'name',
-    render: text => <a>{text}</a>,
-  },
-  {
-    title: '控制引脚',
-    dataIndex: 'control_pin',
-    key: 'control_pin',
-  },
-  {
-    title: '反馈引脚',
-    dataIndex: 'feedback_pin',
-    key: 'feedback_pin',
-  },
-  {
-    title: '储位状态',
-    dataIndex: 'box_status',
-    key: 'box_status',
-    render: function (text, record) {
-      if (text) return <Badge color="yellow" text="占用"/>;
-      return <Badge color="blue" text="空置"/>;
-    },
-  },
-  {
-    title: '柜门状态',
-    dataIndex: 'door_status',
-    key: 'door_status',
-    render: function (text, record) {
-      if (text) return <Badge status="error" text="开启"/>;
-      return <Badge status="success" text="关闭"/>;
-    },
-  },
-  {
-    title: '网络状态',
-    dataIndex: 'status',
-    key: 'status',
-    render: function (text, record) {
-      if (text) return <Badge status="processing" text="在线"/>;
-      return <Badge status="error" text="断线"/>;
-    },
-  },
-  {
-    title: '操作',
-    key: 'action',
-    render: (text, record) => (
-      <Space size="middle">
-        <a>开门</a>
-      </Space>
-    ),
-  },
-];
-
 function ListDoc() {
+
+  const req3 = useRequest((key) => ({
+    url: '/box/open',
+    method: 'post',
+    data: {key: key},
+  }), {
+    manual: true,
+    fetchKey: id => id,
+    onSuccess: (result, params) => {
+      console.log("delete result: ", result);
+      if (result.success) {
+        message.success(`打开成功.`);
+        req1.run();
+      } else {
+        message.error(`打开失败.`);
+      }
+    }
+  });
+
+  // const { run, fetches } = useRequest(deleteUser, {
+  const req2 = useRequest((key) => ({
+    url: '/doc/delete',
+    method: 'post',
+    data: {key: key},
+  }), {
+    manual: true,
+    fetchKey: id => id,
+    onSuccess: (result, params) => {
+      console.log("delete result: ", result);
+      if (result.success) {
+        message.success(`删除成功.`);
+        req.run();
+      } else {
+        message.error(`删除失败.`);
+      }
+    }
+  });
 
   // const {data, error, loading} = useRequest({
   const req = useRequest({
@@ -147,6 +67,159 @@ function ListDoc() {
     setLoading(req.loading || req1.loading);
   });
 
+  const columns = [
+    {
+      title: '姓名',
+      dataIndex: 'name',
+      key: 'name',
+      render: text => <a>{text}</a>,
+    },
+    {
+      title: '学号',
+      dataIndex: 'student_id',
+      key: 'student_id',
+    },
+    {
+      title: '身份证号',
+      dataIndex: 'id_card',
+      key: 'id_card',
+    },
+    {
+      title: '出生日期',
+      dataIndex: 'birth',
+      key: 'birth',
+    },
+    {
+      title: '班级',
+      dataIndex: 'class',
+      key: 'class',
+    },
+    {
+      title: '院系',
+      dataIndex: 'department',
+      key: 'department',
+    },
+    {
+      title: '储位',
+      dataIndex: 'box_name',
+      key: 'box_name',
+    },
+    {
+      title: '档案状态',
+      dataIndex: 'doc_status',
+      key: 'doc_status',
+      render: function (text, record) {
+        if (text === "在库") return <Badge color="blue" text="在库"/>;
+        if (text === "借出") return <Badge color="yellow" text="借出"/>;
+        return <Badge color="red" text="异常"/>;
+      },
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: function (text, record, index) {
+        if (record.doc_status && record.doc_status === "异常") {
+          return (
+            <Space size="middle">
+              <Button type="primary" loading={req2.fetches[record._key]?.loading} onClick={() => {
+                req2.run(record._key)
+                // console.log("record._key: ",typeof record._key);
+              }}>删除</Button>
+            </Space>
+          );
+        } else {
+          return (
+            <Space size="middle">
+              不能删除
+            </Space>
+          );
+        }
+      }
+    },
+  ];
+
+  const columns1 = [
+    {
+      title: '编号',
+      dataIndex: '_key',
+      key: '_key',
+    },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: text => <a>{text}</a>,
+    },
+    {
+      title: '控制引脚',
+      dataIndex: 'control_pin',
+      key: 'control_pin',
+    },
+    {
+      title: '反馈引脚',
+      dataIndex: 'feedback_pin',
+      key: 'feedback_pin',
+    },
+    {
+      title: '分配状态',
+      dataIndex: 'assign_status',
+      key: 'assign_status',
+      render: function (text, record) {
+        if (text) return <Badge color="yellow" text="已分配"/>;
+        return <Badge color="blue" text="未分配"/>;
+      },
+    },
+    {
+      title: '储位状态',
+      dataIndex: 'box_status',
+      key: 'box_status',
+      render: function (text, record) {
+        if (text) return <Badge color="yellow" text="占用"/>;
+        return <Badge color="blue" text="空置"/>;
+      },
+    },
+    {
+      title: '柜门状态',
+      dataIndex: 'door_status',
+      key: 'door_status',
+      render: function (text, record) {
+        if (text) return <Badge status="error" text="开启"/>;
+        return <Badge status="success" text="关闭"/>;
+      },
+    },
+    {
+      title: '网络状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: function (text, record) {
+        if (text) return <Badge status="processing" text="在线"/>;
+        return <Badge status="error" text="断线"/>;
+      },
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: function (text, record, index) {
+        if (record.status && !record.door_status) {
+          return (
+            <Space size="middle">
+              <Button type="primary" loading={req3.fetches[record._key]?.loading} onClick={() => {
+                req3.run(record._key)
+                // console.log("record._key: ",typeof record._key);
+              }}>开门</Button>
+            </Space>
+          );
+        } else {
+          return (
+            <Space size="middle">
+              不能操作
+            </Space>
+          );
+        }
+      }
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -163,6 +236,7 @@ function ListDoc() {
       <Table columns={columns1} rowKey={record => record._key} dataSource={req1.data}/>
     </div>
   );
+
 }
 
 export default ListDoc;

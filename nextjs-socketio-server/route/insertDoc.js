@@ -77,7 +77,7 @@ function InsertDoc() {
       {finish ?
         (<Result
           status="success"
-          title="档案已经成功入库!"
+          title="档案入库成功!"
           subTitle="请关闭此页面"
           extra={[
             <Button onClick={() => {
@@ -160,7 +160,8 @@ function InsertDoc() {
             >
               <Select labelInValue placeholder={"请选择"} style={{width: 120}}>
                 {options.map(d => (
-                  <Option key={d._key} value={d._key} disabled={d.doc_status || !d.status}>{d.name}</Option>))}
+                  <Option key={d._key} value={d._key}
+                          disabled={!(d.status && !d.box_status && !d.assign_status)}>{d.name}</Option>))}
               </Select>
             </Form.Item>
             <Form.Item {...tailLayout}>

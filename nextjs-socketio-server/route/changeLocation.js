@@ -1,73 +1,85 @@
-import {Table, Tag, PageHeader, Space, Modal, Select} from 'antd';
-import {useEffect, useState} from 'react';
+import {Table, Tag, PageHeader, Space, Modal, Select, Badge} from 'antd';
+import {useRequest} from '@umijs/hooks';
+import {useContext, useEffect, useState} from 'react';
+import {AppContext} from "../pages";
 
-const { Option } = Select;
-
-const data = [
-  {
-    key: '1',
-    name: 'John Brown',
-    age: 32,
-    address: 'New York No. 1 Lake Park',
-    tags: ['nice', 'developer'],
-  },
-  {
-    key: '2',
-    name: 'Jim Green',
-    age: 42,
-    address: 'London No. 1 Lake Park',
-    tags: ['loser'],
-  },
-  {
-    key: '3',
-    name: 'Joe Black',
-    age: 32,
-    address: 'Sidney No. 1 Lake Park',
-    tags: ['cool', 'teacher'],
-  },
-];
+const {Option} = Select;
 
 function ChangeLocation() {
 
+  const [ModalText, setModalText] = useState('请选择要调整到的储位:');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const setLoading = useContext(AppContext);
+
+  const req = useRequest({
+    url: '/doc/gets',
+    method: 'post',
+  });
+
+  const req1 = {};
+
+  useEffect(() => {
+    document.title = '快速储位调整';
+  }, []);
+
+  useEffect(() => {
+    if (req.error || req1.error) {
+      if (req.error) console.log('error: ', req.error);
+      if (req1.error) console.log('error1: ', req1.error);
+    }
+    setLoading(req.loading);
+  });
+
   const columns = [
     {
-      title: 'Name',
+      title: '姓名',
       dataIndex: 'name',
       key: 'name',
       render: text => <a>{text}</a>,
     },
     {
-      title: 'Age',
-      dataIndex: 'age',
-      key: 'age',
+      title: '学号',
+      dataIndex: 'student_id',
+      key: 'student_id',
     },
     {
-      title: 'Address',
-      dataIndex: 'address',
-      key: 'address',
+      title: '身份证号',
+      dataIndex: 'id_card',
+      key: 'id_card',
     },
     {
-      title: 'Tags',
-      key: 'tags',
-      dataIndex: 'tags',
-      render: tags => (
-        <>
-          {tags.map(tag => {
-            let color = tag.length > 5 ? 'geekblue' : 'green';
-            if (tag === 'loser') {
-              color = 'volcano';
-            }
-            return (
-              <Tag color={color} key={tag}>
-                {tag.toUpperCase()}
-              </Tag>
-            );
-          })}
-        </>
-      ),
+      title: '出生日期',
+      dataIndex: 'birth',
+      key: 'birth',
     },
     {
-      title: 'Action',
+      title: '班级',
+      dataIndex: 'class',
+      key: 'class',
+    },
+    {
+      title: '院系',
+      dataIndex: 'department',
+      key: 'department',
+    },
+    {
+      title: '储位',
+      dataIndex: 'box_name',
+      key: 'box_name',
+    },
+    {
+      title: '档案状态',
+      dataIndex: 'doc_status',
+      key: 'doc_status',
+      render: function (text, record) {
+        if (text === "在库") return <Badge color="blue" text="在库"/>;
+        if (text === "借出") return <Badge color="yellow" text="借出"/>;
+        return <Badge color="red" text="异常"/>;
+      },
+    },
+    {
+      title: '操作',
       key: 'action',
       render: (text, record, index) => (
         <Space size="middle">
@@ -77,7 +89,7 @@ function ChangeLocation() {
             }
           }>快速储位调整</a>
         </Space>
-      ),
+      )
     },
   ];
 
@@ -95,14 +107,6 @@ function ChangeLocation() {
     setModalVisible(false);
   };
 
-  const [ModalText, setModalText] = useState('请选择要调整到的储位:');
-  const [modalVisible, setModalVisible] = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
-
-  useEffect(() => {
-    document.title = '快速储位调整';
-  }, []);
-
   return (
     <div>
       <PageHeader
@@ -110,7 +114,7 @@ function ChangeLocation() {
         backIcon={false}
         title="快速储位调整"
       />
-      <Table columns={columns} dataSource={data}/>
+      <Table columns={columns} rowKey={record => record._key} dataSource={req.data}/>
       <Modal
         title="快速储位调整"
         visible={modalVisible}
@@ -119,7 +123,7 @@ function ChangeLocation() {
         onCancel={handleCancel}
       >
         <p>{ModalText}</p>
-        <Select defaultValue={1} style={{ width: 120 }} >
+        <Select defaultValue={1} style={{width: 120}}>
           <Option value={1}>1号柜</Option>
           <Option value={2}>2号柜</Option>
         </Select>
