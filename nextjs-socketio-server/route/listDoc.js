@@ -231,7 +231,7 @@ function ListDoc() {
       <PageHeader
         className="site-page-header"
         backIcon={false}
-        title="储位状态"
+        title="储位列表"
       />
       <Table columns={columns1} rowKey={record => record._key} dataSource={req1.data}/>
     </div>
