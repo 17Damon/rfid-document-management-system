@@ -1,3 +1,8 @@
+/**
+ * - 作者
+ * - 马文静
+ **/
+
 'use strict';
 
 const express = require('express');
@@ -10,6 +15,8 @@ const handle = app.getRequestHandler();
 const {Database, aql} = require('arangojs');
 const secret = require('./secret.json');
 const db = new Database({url: secret.arango.url});
+var io = {};
+const socket_object = {};
 
 
 const awaitWrap = (promise) => {
@@ -33,7 +40,7 @@ db.useDatabase("rfid_dms");
   }
 })();
 
-//改变柜子在线状态
+//更新储位在线状态
 async function updateBoxOnlineStatus(online) {
   const [err, cursor] = await awaitWrap(db.query(aql`for i in box update i with {status:${online}} in box return NEW`));
   if (err) {
@@ -41,11 +48,27 @@ async function updateBoxOnlineStatus(online) {
   }
 }
 
-//改变柜门线状态
-async function updateBoxDoorStatus(key,status) {
+//更新储位状态
+async function updateBoxStatus(box_id, box_status) {
+  const [err, cursor] = await awaitWrap(db.query(aql`update ${box_id} with {box_status:${box_status}} in box return NEW`));
+  if (err) {
+    console.log('err: ', err);
+  }
+}
+
+//更新分配状态
+async function updateAssignStatus(box_id, assign_status) {
+  const [err, cursor] = await awaitWrap(db.query(aql`update ${box_id} with {assign_status:${assign_status}} in box return NEW`));
+  if (err) {
+    console.log('err: ', err);
+  }
+}
+
+//更新柜门状态
+async function updateBoxDoorStatus(box_id, door_status) {
   //更新 柜门状态
   let result = {};
-  const [err, cursor] = await awaitWrap(db.query(aql`update ${key} with {door_status:${status} in box return NEW`));
+  const [err, cursor] = await awaitWrap(db.query(aql`update ${box_id} with {door_status:${door_status}} in box return NEW`));
   if (err) {
     console.log('err: ', err);
     result.data = 'db failed.';
@@ -56,61 +79,132 @@ async function updateBoxDoorStatus(key,status) {
   return result;
 }
 
+//更新档案状态
+async function updateDocStatus(box_id, doc_status) {
+  const [err, cursor] = await awaitWrap(db.query(aql`for i in doc filter i.box_id == ${box_id} update i with {doc_status:${doc_status}} in doc return NEW`));
+  if (err) {
+    console.log('err: ', err);
+  }
+}
+
+//更新档案储位号
+async function updateDocBoxId(box_id, next_box_id) {
+  const [err, cursor] = await awaitWrap(db.query(aql`for i in doc filter i.box_id == ${box_id} update i with {box_id:${next_box_id},box_name:${next_box_id+'号柜'}} in doc return NEW`));
+  if (err) {
+    console.log('err: ', err);
+  }
+}
+
 //打开柜门
-async function openDoor(key,io) {
-  //todo io open box door 传送操作状态 "异常" "借出" "在库" "储位调整出（异常+新的柜号+解除旧柜子分配+增加新柜子分配）" "储位调整进（在库）"
-  io.sockets.sockets[socket.id].emit('client_operate', 'test', (data) => {
+async function openDoor(box_id, operate_type, next_box_id) {
+
+  let payload = {
+    type: 'box_open',
+    box_id: box_id,
+    operate_type: operate_type,
+    next_box_id: next_box_id
+  };
+
+  //打开柜门
+  io.sockets.sockets[socket_object['box'].id].emit('client_operate', payload, (data) => {
     console.log(data);
   });
 
-  // todo 数据库缓存 操作类型和所需值 柜号为 key
+  //通知柜门打开
+  io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_open', 'test', (data) => {
+    console.log(data);
+  });
 
-  await updateBoxDoorStatus(key,true);
+  //更新柜门状态为打开
+  await updateBoxDoorStatus(box_id, true);
+  return new Promise(resolve => (resolve(true)));
 }
 
 //关闭柜门
-async function closeDoor(key) {
-  //todo 更新 柜子状态 box_status by key && 档案状态 doc.doc_status by box_id == key
+async function closeDoor(box_id, box_status, operate_type, next_box_id) {
 
-  // todo 读取数据库缓存 进行相应操作
+  // 更新储位状态
+  await updateBoxStatus(box_id, box_status);
+  //更新柜门状态为关闭
+  await updateBoxDoorStatus(box_id, false);
+  // 更新档案状态
+  let result = true;
+  if (operate_type === '异常' && !box_status) {
+    console.log("updateDocStatus: ");
+    await updateDocStatus(box_id, '异常');
+  } else if (operate_type === '借出' && !box_status) {
+    await updateDocStatus(box_id, '借出');
+  } else if (operate_type === '在库' && box_status) {
+    await updateDocStatus(box_id, '在库');
+  } else if (operate_type === '储位调整出' && !box_status) {
+    //释放原储位 && 分配新储位
+    await updateAssignStatus(box_id, false);
+    await updateAssignStatus(next_box_id, true);
+    //档案更新为新储位号 && 状态为异常
+    await updateDocBoxId(box_id, next_box_id);
+    await updateDocStatus(box_id, '异常');
+  } else if (operate_type === '储位调整进' && box_status) {
+    await updateDocStatus(box_id, '在库');
+  } else {
+    result = false;
+  }
 
-  await updateBoxDoorStatus(key,false);
+  // 通知柜门关闭
+  io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_close', box_status, (data) => {
+    console.log(data);
+  });
+  return result;
+
 }
 
 app.prepare()
   .then(() => {
     const exp = express();
     const server = require('http').Server(exp);
-    const io = require('socket.io')(server);
-
-
+    io = require('socket.io')(server);
 
     // middleware
     io.use((socket, next) => {
       let token = socket.handshake.query.token;
+      let type = socket.handshake.query.type;
       if (isValid(token)) {
         console.log("token is right: ", token);
+        socket_object[type] = socket;
         return next();
       }
       console.log("token is wrong: ", token);
       return next(new Error('authentication error'));
     });
 
-    io.on('connection', function (socket) {
-      console.log('a user connected socket id: ', socket.id);
-      updateBoxOnlineStatus(true);
-      socket.on('disconnect', function () {
-        console.log('user disconnected');
-        updateBoxOnlineStatus(false);
+    io.on('connection', async function (socket) {
+      console.log(socket.handshake.query.type + ' user connected socket id: ', socket.id);
+      if (socket.handshake.query.type === 'box') {
+        await updateBoxOnlineStatus(true);
+        if (socket_object.browser) {
+          io.sockets.sockets[socket_object.browser.id].emit('box_status_update', true, (data) => {
+            console.log(data);
+          });
+        }
+      }
+      socket.on('disconnect', async function () {
+        console.log(socket.handshake.query.type + ' user disconnected');
+        if (socket.handshake.query.type === 'box') {
+          await updateBoxOnlineStatus(false);
+          if (socket_object.browser) {
+            io.sockets.sockets[socket_object.browser.id].emit('box_status_update', false, (data) => {
+              console.log(data);
+            });
+          }
+        }
       });
 
       // receive server_operate command
-      socket.on('server_operate',async (command, fn) => {
-        console.log('receive a event server_operate: ', command);
+      socket.on('server_operate', async (payload, fn) => {
+        console.log('receive a event server_operate: ', payload);
         let result = false;
-        switch (command) {
+        switch (payload.type) {
           case 'closeDoor':
-            result = await closeDoor();
+            result = await closeDoor(payload.box_id, payload.box_status, payload.operate_type, payload.next_box_id);
             break;
           case 'stop':
             // result = fanStop();
@@ -129,10 +223,6 @@ app.prepare()
 
       });
 
-      io.sockets.sockets[socket.id].emit('client_operate', 'test', (data) => {
-        console.log(data);
-      });
-
     });
 
     exp.use(express.json());
@@ -148,13 +238,28 @@ app.prepare()
       }
     });
 
+    //通过student_id获取档案
+    exp.all('/doc/getByStudentId', async (req, res) => {
+      const [err, cursor] = await awaitWrap(db.query(aql`for i in doc filter i.student_id==${req.body.student_id} return i`));
+      if (err) {
+        res.send('db failed.');
+      } else {
+        const result = await cursor.all();
+        res.send(result);
+      }
+    });
+
     //添加异常档案
     exp.all('/doc/add', async (req, res) => {
-
-      //todo invoke openDoor "在库"
-      //todo 更新 box   assign_status:true by box_id
+      //invoke openDoor "在库"
       let doc = req.body;
       doc.doc_status = "异常";
+      let box_id = doc.box_id;
+      await openDoor(box_id, '在库');
+
+      //更新 box   assign_status:true by box_id
+      await updateAssignStatus(box_id, true);
+
       const [err, cursor] = await awaitWrap(db.query(aql`insert ${req.body} into doc return NEW`));
       if (err) {
         console.log('err: ', err);
@@ -167,9 +272,14 @@ app.prepare()
 
     //删除异常档案
     exp.all('/doc/delete', async (req, res) => {
-      //todo 更新 box   assign_status:false by box_id
+      console.log('req.body: ', req.body);
+
+      //更新 box   assign_status:false by box_id
+      let box_id = req.body.box_id;
+      let key = req.body.key;
+      await updateAssignStatus(box_id, false);
       const result = {};
-      const [err, cursor] = await awaitWrap(db.query(aql`remove ${req.body.key} in doc return OLD`));
+      const [err, cursor] = await awaitWrap(db.query(aql`remove ${key} in doc return OLD`));
       if (err) {
         console.log('err: ', err);
         result.data = 'db failed.';
@@ -193,8 +303,13 @@ app.prepare()
 
     //打开柜门
     exp.all('/box/open', async (req, res) => {
-      //todo 接收操作状态 "异常" "借出" "在库"
-      openDoor();
+
+      let operate_type = req.body.operate_type;
+      let box_id = req.body.box_id;
+      let next_box_id = req.body.next_box_id;
+      let result = {};
+      await openDoor(box_id, operate_type, next_box_id);
+      result.success = true;
       res.send(result);
     });
 

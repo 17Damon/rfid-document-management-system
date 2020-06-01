@@ -1,19 +1,29 @@
+/**
+ * - 作者
+ * - 马文静
+ **/
+
 import {useEffect, useContext} from 'react';
 import {useRequest} from '@umijs/hooks';
 import {Table, Space, PageHeader, Button, Badge, message} from 'antd';
 import {AppContext} from '../pages/index';
+import {socket} from '../pages/index';
 
 function ListDoc() {
+  const {setLoading, setBoxStatus, server_status} = useContext(AppContext);
 
   const req3 = useRequest((key) => ({
     url: '/box/open',
     method: 'post',
-    data: {key: key},
+    data: {
+      operate_type: '异常',
+      box_id: key,
+    },
   }), {
     manual: true,
     fetchKey: id => id,
     onSuccess: (result, params) => {
-      console.log("delete result: ", result);
+      console.log("open result: ", result);
       if (result.success) {
         message.success(`打开成功.`);
         req1.run();
@@ -23,11 +33,13 @@ function ListDoc() {
     }
   });
 
-  // const { run, fetches } = useRequest(deleteUser, {
-  const req2 = useRequest((key) => ({
+  const req2 = useRequest((doc) => ({
     url: '/doc/delete',
     method: 'post',
-    data: {key: key},
+    data: {
+      box_id: doc.box_id,
+      key: doc._key
+    },
   }), {
     manual: true,
     fetchKey: id => id,
@@ -36,13 +48,13 @@ function ListDoc() {
       if (result.success) {
         message.success(`删除成功.`);
         req.run();
+        req1.run();
       } else {
         message.error(`删除失败.`);
       }
     }
   });
 
-  // const {data, error, loading} = useRequest({
   const req = useRequest({
     url: '/doc/gets',
     method: 'post',
@@ -51,9 +63,11 @@ function ListDoc() {
   const req1 = useRequest({
     url: '/box/gets',
     method: 'post',
+  },{
+    onSuccess: (result, params) => {
+      setBoxStatus(result[0].status);
+    }
   });
-
-  const setLoading = useContext(AppContext);
 
   useEffect(() => {
     document.title = '档案列表';
@@ -65,6 +79,25 @@ function ListDoc() {
       if (req1.error) console.log('error1: ', req1.error);
     }
     setLoading(req.loading || req1.loading);
+  },[req.loading,req1.loading]);
+
+  useEffect(() => {
+    let cb = async (command, fn) => {
+      console.log('receive a event box_status_update: ', command);
+      // req.run();
+      req1.run();
+    };
+    let cb1 = async (command, fn) => {
+      console.log('receive a event notice_box_door_close: ', command);
+      req.run();
+      req1.run();
+    };
+    socket.on('notice_box_door_close', cb1);
+    socket.on('box_status_update', cb);
+    return () => {
+      socket.off('notice_box_door_close', cb1);
+      socket.off('box_status_update', cb);
+    };
   });
 
   const columns = [
@@ -122,8 +155,7 @@ function ListDoc() {
           return (
             <Space size="middle">
               <Button type="primary" loading={req2.fetches[record._key]?.loading} onClick={() => {
-                req2.run(record._key)
-                // console.log("record._key: ",typeof record._key);
+                req2.run(record)
               }}>删除</Button>
             </Space>
           );
@@ -192,7 +224,7 @@ function ListDoc() {
       dataIndex: 'status',
       key: 'status',
       render: function (text, record) {
-        if (text) return <Badge status="processing" text="在线"/>;
+        if (server_status && text) return <Badge status="processing" text="在线"/>;
         return <Badge status="error" text="断线"/>;
       },
     },
@@ -200,12 +232,11 @@ function ListDoc() {
       title: '操作',
       key: 'action',
       render: function (text, record, index) {
-        if (record.status && !record.door_status) {
+        if (record.status && !record.door_status && record.box_status) {
           return (
             <Space size="middle">
               <Button type="primary" loading={req3.fetches[record._key]?.loading} onClick={() => {
                 req3.run(record._key)
-                // console.log("record._key: ",typeof record._key);
               }}>开门</Button>
             </Space>
           );

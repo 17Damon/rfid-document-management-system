@@ -1,100 +1,179 @@
-const io = require('socket.io-client');
+/**
+ * - 作者
+ * - 马文静
+ **/
 
 const Gpio = require('onoff').Gpio;
-// const locker = new Gpio(18, 'out');
-// const gLed = new Gpio(17, 'out');
-// const rLed = new Gpio(27, 'out');
-// const locker_status = new Gpio(17, 'in', 'both', {debounceTimeout: 10});
+const locker1 = new Gpio(18, 'out');
+const locker_status1 = new Gpio(17, 'in', 'both', {debounceTimeout: 10});
+const sensor_status1 = new Gpio(27, 'in', 'both', {debounceTimeout: 10});
+const locker2 = new Gpio(25, 'out');
+const locker_status2 = new Gpio(9, 'in', 'both', {debounceTimeout: 10});
+const sensor_status2 = new Gpio(11, 'in', 'both', {debounceTimeout: 10});
 
-var temp_status = 0;
-//
-// locker_status.watch((err, value) => {
-//
-//   if (err) {
-//     throw err;
-//   }
-//
-//   // console.log("locker_status is changed, the value is: ", value);
-//   if (value === 1) {
-//     console.log("locker is opened, the value : ", value, locker_status.readSync());
-//     temp_status = 1;
-//     // rLed.writeSync(1);
-//   }
-//
-//   if (value === 0) {
-//     if(temp_status === 1) {
-//       console.log("locker is closed, the value : ", value, locker_status.readSync());
-//       temp_status = 0;
-//     }
-//     // rLed.writeSync(0);
-//   }
-//
-// });
+//电控锁状态
+var locker_temp_status1 = 0;
+var locker_temp_status2 = 0;
 
-const socket = io('http://192.168.5.23:3000/', {
+//光电传感器状态
+var sensor_temp_status1 = 0;
+var sensor_temp_status2 = 0;
+var box_object = {};
+
+//网络通信模块
+const io = require('socket.io-client');
+const socket = io('http://192.168.0.104:3000/', {
   query: {
+    type: 'box',
     token: 'cde'
   }
 });
 
+var cb = async (payload, fn) => {
+  console.log('receive a event client_operate payload: ', payload);
+  box_object[payload.box_id] = payload;
+  let result = false;
+  switch (payload.type) {
+    case 'box_open':
+      result = await box_open(payload.box_id);
+      break;
+    case 'sendToServer':
+      result = await sendMessage();
+      break;
+    default:
+      console.log('Sorry, can\'t find command ' + payload.type + '.');
+  }
+  if (result) {
+    fn('client_completed');
+  } else {
+    fn('client_failed');
+  }
+};
+
 socket.on('connect', () => {
   console.log('socket.connected: ', socket.connected); // true
-  console.log('socket.id: ', socket.id); // true
+  console.log('socket.id: ', socket.id);
+
+  socket.on('disconnect', function () {
+    console.log('user disconnected');
+    socket.off('client_operate', cb);
+    socket.off('disconnect');
+  });
 
   // receive client_operate command
-  socket.on('client_operate', (command, fn) => {
-    console.log('receive a event client_operate: ', command);
-    let result = false;
-    switch (command) {
-      case 'test':
-        result = test();
-        break;
-      case 'ledOn':
-        result = ledOn();
-        break;
-      case 'ledOff':
-        result = ledOff();
-        break;
-      case 'lockerOpen':
-        result = lockerOpen();
-        break;
-      case 'sendToServer':
-        result = sendMessage();
-        break;
-      default:
-        console.log('Sorry, can\'t find command ' + command + '.');
-
-    }
-    if (result) {
-      fn('zbg_client_completed');
-    } else {
-      fn('client_failed');
-    }
-  });
+  socket.on('client_operate', cb);
 
 });
 
-// helper tools
+// 电控锁状态反馈
+locker_status1.watch((err, value) => {
 
-function test() {
+  if (err) {
+    throw err;
+  }
+
+  if (value === 1) {
+    console.log("locker1 is opened, the value : ", value, locker_status1.readSync());
+    locker_temp_status1 = 1;
+  }
+
+  if (value === 0) {
+    if (locker_temp_status1 === 1) {
+      console.log("locker1 is closed, the value : ", value, locker_status1.readSync());
+      locker_temp_status1 = 0;
+      let payload = box_object['1'];
+      payload.type = 'closeDoor';
+      payload.box_id = '1';
+      payload.box_status = !!sensor_temp_status1;
+      socket.emit('server_operate', payload, (data) => {
+        console.log(data);
+      });
+    }
+  }
+
+});
+
+locker_status2.watch((err, value) => {
+
+  if (err) {
+    throw err;
+  }
+
+  if (value === 1) {
+    console.log("locker2 is opened, the value : ", value, locker_status2.readSync());
+    locker_temp_status2 = 1;
+  }
+
+  if (value === 0) {
+    if (locker_temp_status2 === 1) {
+      console.log("locker2 is closed, the value : ", value, locker_status2.readSync());
+      locker_temp_status2 = 0;
+      let payload = box_object['2'];
+      payload.type = 'closeDoor';
+      payload.box_id = '2';
+      payload.box_status = !!sensor_temp_status2;
+      socket.emit('server_operate', payload, (data) => {
+        console.log(data);
+      });
+    }
+  }
+
+});
+
+//光电传感器状态反馈
+sensor_status1.watch((err, value) => {
+
+  if (err) {
+    throw err;
+  }
+
+  if (value === 1) {
+    console.log("sensor1 is opened, the value : ", value, sensor_status1.readSync());
+    sensor_temp_status1 = 1;
+  }
+
+  if (value === 0) {
+    if (sensor_temp_status1 === 1) {
+      console.log("sensor1 is closed, the value : ", value, sensor_status1.readSync());
+      sensor_temp_status1 = 0;
+    }
+  }
+
+});
+
+sensor_status2.watch((err, value) => {
+
+  if (err) {
+    throw err;
+  }
+
+  if (value === 1) {
+    console.log("sensor2 is opened, the value : ", value, sensor_status2.readSync());
+    sensor_temp_status2 = 1;
+  }
+
+  if (value === 0) {
+    if (sensor_temp_status2 === 1) {
+      console.log("sensor2 is closed, the value : ", value, sensor_status2.readSync());
+      sensor_temp_status2 = 0;
+    }
+  }
+
+});
+
+async function box_open(box_id) {
+  if (box_id === '1') {
+    locker1.writeSync(1);
+    await timeout(10);
+    locker1.writeSync(0);
+  } else if (box_id === '2') {
+    locker2.writeSync(1);
+    await timeout(10);
+    locker2.writeSync(0);
+  } else {
+    return false;
+  }
   return true;
-}
-
-function ledOn() {
-  gLed.writeSync(1);
-  return true;
-}
-
-function ledOff() {
-  gLed.writeSync(0);
-  return false;
-}
-
-async function lockerOpen() {
-  locker.writeSync(1);
-  await timeout(10);
-  locker.writeSync(0);
-  return false;
 }
 
 function sendMessage() {
@@ -103,7 +182,6 @@ function sendMessage() {
   });
   return true;
 }
-
 
 function timeout(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
