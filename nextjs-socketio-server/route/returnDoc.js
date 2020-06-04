@@ -3,10 +3,10 @@
  * - 马文静
  **/
 
-import {Descriptions, PageHeader, Button, Badge, Result} from 'antd';
+import {Descriptions, PageHeader, Button, Badge, Result, message} from 'antd';
 import {useEffect, useContext, useState} from "react";
 import {useRequest} from '@umijs/hooks';
-import {AppContext, socket} from '../pages/index';
+import {AppContext, socket, rfid_socket} from '../pages/index';
 
 const docTemp = {
   "name": "",
@@ -36,7 +36,7 @@ function ReturnDoc() {
   const [doc, setDoc] = useState(docTemp);
   const [finish, setFinish] = useState(false);
   const [finish_status, setFinishStatus] = useState(false);
-  const {setLoading, global_box_status, setSpin_tip} = useContext(AppContext);
+  const {setLoading, global_box_status, rfid_status, setSpin_tip} = useContext(AppContext);
 
   const req = useRequest((box_id) => ({
     url: '/box/open',
@@ -52,6 +52,19 @@ function ReturnDoc() {
       console.log("open result: ", result);
     }
   });
+
+  const req1 = useRequest((student_id) => ({
+      url: '/doc/getByStudentId',
+      method: 'post',
+      data: {
+        student_id: student_id
+      },
+    }),
+    {
+      manual: true,
+      onSuccess: (result, params) => {
+      }
+    });
 
   useEffect(() => {
     document.title = '档案归还';
@@ -74,11 +87,38 @@ function ReturnDoc() {
       setFinishStatus(box_status);
       setFinish(true);
     };
+    let cb2 = async (payload, fn) => {
+      console.log('receive a event rfid_get: ', payload);
+      if (payload.success) {
+        message.success(`询查单张电子标签成功，epc_id_hex_str: ${payload.epc_id_hex_str}.`);
+      } else {
+        message.error(`询查单张电子标签失败，有效范围内没有单张电子标签，或者存在多张电子标签！`);
+        setLoading(false);
+      }
+    };
+    let cb3 = async (payload, fn) => {
+      console.log('receive a event rfid_read: ', payload);
+      if (payload.success) {
+        let result = await req1.run(payload.student_id);
+        if (result.length > 0) {
+          setDoc(result[0]);
+        } else {
+          message.error(`学号: ${payload.student_id} 不存在于数据库！`);
+        }
+      } else {
+        message.error(`读取电子标签失败！`);
+      }
+      setLoading(false);
+    };
     socket.on('notice_box_door_open', cb);
     socket.on('notice_box_door_close', cb1);
+    rfid_socket.on('rfid_get', cb2);
+    rfid_socket.on('rfid_read', cb3);
     return () => {
       socket.off('notice_box_door_open', cb);
       socket.off('notice_box_door_close', cb1);
+      rfid_socket.off('rfid_get', cb2);
+      rfid_socket.off('rfid_read', cb3);
     };
   });
 
@@ -129,9 +169,18 @@ function ReturnDoc() {
             </Descriptions>
             <br/>
             <Button type="primary"
+                    disabled={!rfid_status}
                     onClick={() => {
+                      setLoading(true);
+                      setDoc(docTemp);
+                      console.log("读取RFID标签");
                       //todo rfid read && req2.run(record.student_id)
-                      setDoc(docExample);
+                      let payload = {};
+                      payload.type = 'getDo';
+                      payload.get_do_type = 'read';
+                      rfid_socket.emit('server_operate', payload, (data) => {
+                        console.log(data);
+                      });
                     }}
             >
               读取RFID标签

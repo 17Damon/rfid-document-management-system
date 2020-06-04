@@ -89,7 +89,7 @@ async function updateDocStatus(box_id, doc_status) {
 
 //更新档案储位号
 async function updateDocBoxId(box_id, next_box_id) {
-  const [err, cursor] = await awaitWrap(db.query(aql`for i in doc filter i.box_id == ${box_id} update i with {box_id:${next_box_id},box_name:${next_box_id+'号柜'}} in doc return NEW`));
+  const [err, cursor] = await awaitWrap(db.query(aql`for i in doc filter i.box_id == ${box_id} update i with {box_id:${next_box_id},box_name:${next_box_id + '号柜'}} in doc return NEW`));
   if (err) {
     console.log('err: ', err);
   }
@@ -105,10 +105,14 @@ async function openDoor(box_id, operate_type, next_box_id) {
     next_box_id: next_box_id
   };
 
-  //打开柜门
-  io.sockets.sockets[socket_object['box'].id].emit('client_operate', payload, (data) => {
-    console.log(data);
-  });
+  try {
+    //打开柜门
+    io.sockets.sockets[socket_object['box'].id].emit('client_operate', payload, (data) => {
+      console.log(data);
+    });
+  } catch (e) {
+    console.log("openDoor error: ", e);
+  }
 
   //通知柜门打开
   io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_open', 'test', (data) => {
@@ -213,7 +217,7 @@ app.prepare()
             // result = sendMessage(id);
             break;
           default:
-            console.log('Sorry, can\'t find command ' + command + '.');
+            console.log('Sorry, can\'t find command ' + payload.type + '.');
         }
         if (result) {
           fn('server_completed');

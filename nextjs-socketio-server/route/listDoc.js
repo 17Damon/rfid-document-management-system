@@ -10,7 +10,7 @@ import {AppContext} from '../pages/index';
 import {socket} from '../pages/index';
 
 function ListDoc() {
-  const {setLoading, setBoxStatus, server_status} = useContext(AppContext);
+  const {setLoading, setBoxStatus, global_box_status, server_status} = useContext(AppContext);
 
   const req3 = useRequest((key) => ({
     url: '/box/open',
@@ -63,9 +63,9 @@ function ListDoc() {
   const req1 = useRequest({
     url: '/box/gets',
     method: 'post',
-  },{
+  }, {
     onSuccess: (result, params) => {
-      setBoxStatus(result[0].status);
+      // setBoxStatus(result[0].status);
     }
   });
 
@@ -79,7 +79,7 @@ function ListDoc() {
       if (req1.error) console.log('error1: ', req1.error);
     }
     setLoading(req.loading || req1.loading);
-  },[req.loading,req1.loading]);
+  }, [req.loading, req1.loading]);
 
   useEffect(() => {
     let cb = async (command, fn) => {
@@ -224,7 +224,7 @@ function ListDoc() {
       dataIndex: 'status',
       key: 'status',
       render: function (text, record) {
-        if (server_status && text) return <Badge status="processing" text="在线"/>;
+        if (global_box_status && server_status && text) return <Badge status="processing" text="在线"/>;
         return <Badge status="error" text="断线"/>;
       },
     },
@@ -232,7 +232,7 @@ function ListDoc() {
       title: '操作',
       key: 'action',
       render: function (text, record, index) {
-        if (record.status && !record.door_status && record.box_status) {
+        if (global_box_status && record.status && !record.door_status && record.box_status) {
           return (
             <Space size="middle">
               <Button type="primary" loading={req3.fetches[record._key]?.loading} onClick={() => {

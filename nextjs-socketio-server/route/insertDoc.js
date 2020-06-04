@@ -6,7 +6,7 @@
 import {useState, useEffect, useContext} from "react";
 import {useRequest} from '@umijs/hooks';
 import {Form, PageHeader, Input, Button, DatePicker, Select, Result, message} from 'antd';
-import {AppContext, socket} from '../pages/index';
+import {AppContext, rfid_socket, socket} from '../pages/index';
 
 const {Search} = Input;
 const {Option} = Select;
@@ -15,7 +15,8 @@ function InsertDoc() {
   const [options, setOptions] = useState([]);
   const [finish, setFinish] = useState(false);
   const [finish_status, setFinishStatus] = useState(false);
-  const {setLoading, global_box_status, setSpin_tip} = useContext(AppContext);
+  const [rfid_btn_status, setRfidBtnStatus] = useState(true);
+  const {setLoading, global_box_status, rfid_status, setSpin_tip} = useContext(AppContext);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -75,11 +76,33 @@ function InsertDoc() {
       setFinishStatus(box_status);
       setFinish(true);
     };
+    let cb2 = async (payload, fn) => {
+      console.log('receive a event rfid_get: ', payload);
+      if (payload.success) {
+        message.success(`询查单张电子标签成功，epc_id_hex_str: ${payload.epc_id_hex_str}.`);
+      } else {
+        message.error(`询查单张电子标签失败，有效范围内没有单张电子标签，或者存在多张电子标签！`);
+        setLoading(false);
+      }
+    };
+    let cb3 = async (payload, fn) => {
+      console.log('receive a event rfid_write: ', payload);
+      if (payload.success) {
+        message.success(`写入电子标签成功`);
+      } else {
+        message.error(`写入电子标签失败`);
+      }
+      setLoading(false);
+    };
     socket.on('notice_box_door_open', cb);
     socket.on('notice_box_door_close', cb1);
+    rfid_socket.on('rfid_get', cb2);
+    rfid_socket.on('rfid_write', cb3);
     return () => {
       socket.off('notice_box_door_open', cb);
       socket.off('notice_box_door_close', cb1);
+      rfid_socket.off('rfid_get', cb2);
+      rfid_socket.off('rfid_write', cb3);
     };
   });
 
@@ -103,7 +126,6 @@ function InsertDoc() {
       }
     );
     let result = await req2.run(obj.student_id);
-    console.log("result: ", result.length);
     if (result.length > 0) {
       message.error("student_id已经存在于数据库，请更改学号！");
     } else {
@@ -113,10 +135,23 @@ function InsertDoc() {
     }
   };
 
-  function goSpin() {
-    console.log("goSpin: ");
-    //todo rfid write card
-    setLoading(true);
+  function onChange(e) {
+    const {value} = e.target;
+    let valueTemp = value;
+    let reg = /^[\d]+$/;
+    if (!reg.test(value)) {
+      valueTemp = value.slice(0, -1);
+    }
+    if(value.length === 12) {
+      setRfidBtnStatus(false);
+    }else {
+      setRfidBtnStatus(true);
+    }
+    form.setFieldsValue({student_id: valueTemp});
+  }
+
+  function onPressEnter(e) {
+    //ignore Press Enter
   }
 
   const onFinishFailed = errorInfo => {
@@ -131,10 +166,14 @@ function InsertDoc() {
           title={finish_status ? "柜门已经关闭，档案入库成功！" : "柜门已经关闭，但档案未放入储位中，档案入库异常！"}
           subTitle="请关闭此页面"
           extra={[
-            <Button onClick={() => {
-              setFinish(false);
-              form.resetFields();
-            }} type="primary" key="console">
+            <Button
+              type="primary"
+              key="console"
+              onClick={() => {
+                setFinish(false);
+                form.resetFields();
+              }}
+            >
               关闭
             </Button>,
           ]}
@@ -164,12 +203,44 @@ function InsertDoc() {
             <Form.Item
               label="学号"
               name="student_id"
-              rules={[{required: true, message: '请输入你的 学号!'}]}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入你的 学号!'
+                },
+                ({getFieldValue}) => ({
+                  validator(rule, value) {
+                    if (!value || value.length === 12) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject('学号的长度必须等于12!');
+                  },
+                })
+              ]}
             >
               <Search
-                enterButton="写入RFID标签"
-                // onSearch={value => console.log(value)}
-                onSearch={() => goSpin()}
+                enterButton={(
+                  <Button
+                    type="primary"
+                    disabled={!rfid_status || rfid_btn_status}
+                  >
+                    写入RFID标签
+                  </Button>
+                )}
+                maxLength={12}
+                onChange={onChange}
+                onPressEnter={onPressEnter}
+                onSearch={(value) => {
+                  setLoading(true);
+                  console.log("写入RFID标签");
+                  let payload = {};
+                  payload.type = 'getDo';
+                  payload.get_do_type = 'write';
+                  payload.student_id_str = value;
+                  rfid_socket.emit('server_operate', payload, (data) => {
+                    console.log(data);
+                  });
+                }}
               />
             </Form.Item>
 
