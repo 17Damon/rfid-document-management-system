@@ -8,7 +8,7 @@ import Main from '../route/main';
 import {useState, createContext, useEffect} from "react";
 import io from 'socket.io-client';
 
-export const socket = io('http://192.168.0.105:3000/', {
+export const socket = io('http://47.98.180.133:10300/', {
   query: {
     type: 'browser',
     token: 'cde'

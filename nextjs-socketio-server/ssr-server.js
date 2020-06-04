@@ -11,7 +11,7 @@ const next = require('next');
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({dev});
 const handle = app.getRequestHandler();
-
+const sever_port = 10300;
 const {Database, aql} = require('arangojs');
 const secret = require('./secret.json');
 const db = new Database({url: secret.arango.url});
@@ -321,9 +321,9 @@ app.prepare()
       return handle(req, res)
     });
 
-    server.listen(3000, (err) => {
+    server.listen(sever_port, (err) => {
       if (err) throw err;
-      console.log('> Ready on http://localhost:3000')
+      console.log(`> Ready on http://localhost:${sever_port}`)
     })
   })
   .catch((ex) => {
