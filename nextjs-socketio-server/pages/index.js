@@ -99,6 +99,7 @@ function App() {
 
   return (
     <AppContext.Provider value={{
+      global_loading:loading,
       setLoading: setLoading,
       setSpin_tip: setSpin_tip,
       setBoxStatus:setBoxStatus,

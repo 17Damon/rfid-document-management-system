@@ -69,7 +69,7 @@ app.prepare()
           if (!global_port_status) {
             // emit event to send to invoker
             if (socket_object.browser) {
-              io.sockets.sockets[socket_object.browser.id].emit('no_reader', payload, (data) => {
+              io.sockets.sockets[socket_object.browser.id].emit('no_reader', 'test', (data) => {
                 console.log(data);
               });
             }
@@ -385,6 +385,12 @@ let testPort = (path) => {
 
     temp_port.on('error', (err) => {
       console.log(`port ${path} error: ${err.message}`);
+      // 断开设备后，只有被动操作，才能触发 close event
+      if (socket_object.browser) {
+        io.sockets.sockets[socket_object.browser.id].emit('error_reader', 'test', (data) => {
+          console.log(data);
+        });
+      }
     });
 
     temp_port.on('open', () => {
@@ -395,11 +401,7 @@ let testPort = (path) => {
       global_port = {};
       global_port_status = false;
       console.log(`port ${path} is close.`);
-      if (socket_object.browser) {
-        io.sockets.sockets[socket_object.browser.id].emit('no_reader', 'test', (data) => {
-          console.log(data);
-        });
-      }
+      // 断开设备后，只有被动操作，才能触发 close event
     });
 
     temp_port.on('data', async (answer) => {
@@ -454,7 +456,7 @@ let testPort = (path) => {
     console.log();
     // port 应答超时
     await timeout(20);
-    if(!global_port_status){
+    if (!global_port_status) {
       console.log('应答超时.');
       temp_port.close();
       reject(true);

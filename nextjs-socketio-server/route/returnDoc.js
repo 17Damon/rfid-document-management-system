@@ -112,27 +112,29 @@ function ReturnDoc() {
     };
     let cb4 = async (payload, fn) => {
       console.log('receive a event no_reader: ', payload);
-      message.error(`未找到RFID Reader,请连接设备.`);
+      message.error(`未找到RFID Reader, 请连接设备.`);
       setLoading(false);
-
+    };
+    let cb5 = async (payload, fn) => {
+      console.log('receive a event error_reader: ', payload);
+      message.error(`RFID Reader 异常重连, 请继续操作.`);
+      setLoading(false);
     };
     socket.on('notice_box_door_open', cb);
     socket.on('notice_box_door_close', cb1);
     rfid_socket.on('rfid_get', cb2);
     rfid_socket.on('rfid_read', cb3);
     rfid_socket.on('no_reader', cb4);
+    rfid_socket.on('error_reader', cb5);
     return () => {
       socket.off('notice_box_door_open', cb);
       socket.off('notice_box_door_close', cb1);
       rfid_socket.off('rfid_get', cb2);
       rfid_socket.off('rfid_read', cb3);
       rfid_socket.off('no_reader', cb4);
+      rfid_socket.off('error_reader', cb5);
     };
   });
-
-  function onPressEnter(e) {
-    //ignore Press Enter
-  }
 
   return (
     <div>
@@ -182,7 +184,6 @@ function ReturnDoc() {
             <br/>
             <Button type="primary"
                     disabled={!rfid_status}
-                    onPressEnter={onPressEnter}
                     onClick={() => {
                       setLoading(true);
                       setDoc(docTemp);
