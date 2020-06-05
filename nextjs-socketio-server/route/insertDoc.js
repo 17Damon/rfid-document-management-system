@@ -94,15 +94,22 @@ function InsertDoc() {
       }
       setLoading(false);
     };
+    let cb4 = async (payload, fn) => {
+      console.log('receive a event no_reader: ', payload);
+      message.error(`未找到RFID Reader,请连接设备.`);
+      setLoading(false);
+    };
     socket.on('notice_box_door_open', cb);
     socket.on('notice_box_door_close', cb1);
     rfid_socket.on('rfid_get', cb2);
     rfid_socket.on('rfid_write', cb3);
+    rfid_socket.on('no_reader', cb4);
     return () => {
       socket.off('notice_box_door_open', cb);
       socket.off('notice_box_door_close', cb1);
       rfid_socket.off('rfid_get', cb2);
       rfid_socket.off('rfid_write', cb3);
+      rfid_socket.off('no_reader', cb4);
     };
   });
 
@@ -142,9 +149,9 @@ function InsertDoc() {
     if (!reg.test(value)) {
       valueTemp = value.slice(0, -1);
     }
-    if(value.length === 12) {
+    if (value.length === 12) {
       setRfidBtnStatus(false);
-    }else {
+    } else {
       setRfidBtnStatus(true);
     }
     form.setFieldsValue({student_id: valueTemp});

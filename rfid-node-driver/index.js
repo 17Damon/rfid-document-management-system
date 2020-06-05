@@ -9,7 +9,7 @@
 const SerialPort = require('serialport');
 const CRC = require('crc-full').CRC;
 const crc = CRC.default("CRC16_MCRF4XX");
-// right crc '04ff211995'
+// right crc example '04ff211995'
 
 const express = require('express');
 const next = require('next');
@@ -23,19 +23,15 @@ let io = {};
 let socket_object = {};
 let global_get_do_type = '';
 
+// 当前串口
+let global_port = {};
+
+//串口连接状态
+let global_port_status = false;
+
 // todo all code logic can use Promise to ignore serialport event system
 let global_epc_id_hex_str = '';
 let global_student_id_str = '123456789012';
-
-// SerialPort.list().then(ports => console.log(ports));
-const port = new SerialPort('/dev/tty.usbserial-0001', {
-  baudRate: 57600
-});
-
-// Open errors will be emitted as an error event
-port.on('error', function (err) {
-  console.log('port error: ', err.message)
-});
 
 app.prepare()
   .then(() => {
@@ -56,10 +52,10 @@ app.prepare()
       return next(new Error('authentication error'));
     });
 
-    io.on('connection', async function (socket) {
+    io.on('connection', async (socket) => {
       console.log(socket.handshake.query.type + ' user connected socket id: ', socket.id);
 
-      socket.on('disconnect', async function () {
+      socket.on('disconnect', async () => {
         console.log(socket.handshake.query.type + ' user disconnected');
 
       });
@@ -67,6 +63,19 @@ app.prepare()
       // receive server_operate command
       socket.on('server_operate', async (payload, fn) => {
         console.log('receive a event server_operate: ', payload);
+        if (!global_port_status || !global_port.write) {
+          console.log('未找到设备，开始重新查找连接，尝试次数1次.');
+          await getPort();
+          if (!global_port_status) {
+            // emit event to send to invoker
+            if (socket_object.browser) {
+              io.sockets.sockets[socket_object.browser.id].emit('no_reader', payload, (data) => {
+                console.log(data);
+              });
+            }
+            return;
+          }
+        }
         let result = false;
         switch (payload.type) {
           case 'get':
@@ -127,6 +136,16 @@ function isValid(token) {
   return (token === "cde");
 }
 
+const awaitWrap = (promise) => {
+  return promise
+    .then(data => [null, data])
+    .catch(err => [err, null])
+};
+
+function timeout(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 let crc16_chcek = (order) => {
   let computed_crc = crc.compute(Buffer.from(order, "hex"));
   let computed_crc_hex = computed_crc.toString(16);
@@ -149,35 +168,34 @@ let num2HexStr = (num) => {
 let sendOrder = (order) => {
   return new Promise((resolve, reject) => {
     const buf = Buffer.from(crc16_chcek(order), 'hex');
-    // console.log("\nbuf: ", buf);
-    // console.log("buf_length: ", buf.length);
-    port.write(buf, async (err) => {
-      if (err) {
-        console.log(`Error on order ${friendlyHex(order)}: `, err.message);
-        reject(false);
-      }
+    if (global_port.write) {
+      global_port.write(buf, async (err) => {
+        if (err) {
+          console.log(`send order ${friendlyHex(order)} error: `, err.message);
+          reject(true);
+        }
 
-      //todo order name list ,add order friendly name
-      console.log(`\norder ${friendlyHex(order)}is send.`);
-      await timeout(30);
-      resolve(true);
-    });
-
+        //todo order name list ,add order friendly name
+        console.log(`\norder ${friendlyHex(order)}is send.`);
+        await timeout(30);
+        resolve(true);
+      });
+    } else {
+      console.log(`\norder ${friendlyHex(order)}is not send.`);
+    }
   })
 };
 
 let beep = async () => {
-  const beep_order_crc = '07ff33010001';
-  return await sendOrder(beep_order_crc);
+  const order = '07ff33010001';
+  const [err, data] = await awaitWrap(sendOrder(order));
+  return !err;
 };
-
-function timeout(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 let testReadLock = async () => {
   const order = '04ff0b';
-  return await sendOrder(order);
+  const [err, data] = await awaitWrap(sendOrder(order));
+  return !err;
 };
 
 let get = async () => {
@@ -191,7 +209,8 @@ let getDo = async (payload) => {
     global_student_id_str = payload.student_id_str;
   }
   const order = '04ff0f';
-  return await sendOrder(order);
+  const [err, data] = await awaitWrap(sendOrder(order));
+  return !err;
 };
 
 let read = async (epc_hex_str) => {
@@ -218,17 +237,13 @@ let read = async (epc_hex_str) => {
     num_hex_str +
     pwd_hex_str;
 
-  console.log("data_hex_str: ", friendlyHex(data_hex_str));
-  console.log("data_hex_str.length: ", data_hex_str.length);
-
   let order = num2HexStr(4 + data_hex_str.length / 2) + 'ff02' + data_hex_str;
-  return await sendOrder(order);
+  const [err, data] = await awaitWrap(sendOrder(order));
+  return !err;
 };
 
 let write = async (epc_hex_str, student_id_str) => {
   let wdt_buf = Buffer.from(student_id_str, 'utf-8');
-  console.log("\nwdt_buf: ", wdt_buf);
-
   let wnum_hex_str = num2HexStr(wdt_buf.length / 2);
   //epc_id 以字节为单位 一个字等于两个字节，一个字等于4位16进制 长度为0c  下发时enum 长度值改为一半 06
   let enum_hex_str = num2HexStr((epc_hex_str.length / 4));
@@ -255,50 +270,18 @@ let write = async (epc_hex_str, student_id_str) => {
     wdt_hex_str +
     pwd_hex_str;
 
-  console.log("data_hex_str: ", friendlyHex(data_hex_str));
-  console.log("data_hex_str_length: ", data_hex_str.length);
-  console.log("data_buf_length: ", Buffer.from(data_hex_str, 'hex').length);
-
   let order = num2HexStr(4 + data_hex_str.length / 2) + 'ff03' + data_hex_str;
 
-  return await sendOrder(order);
+  const [err, data] = await awaitWrap(sendOrder(order));
+  return !err;
 };
-
-// Switches the port into "flowing mode"
-port.on('data', function (answer) {
-  let data_hex = answer.toString('hex');
-  let re_cmd = data_hex.slice(4, 6);
-  let status = data_hex.slice(6, 8);
-  let data = data_hex.slice(8, -4);
-  console.log("\nre_cmd: ", re_cmd);
-  console.log("status: ", status);
-  console.log("data: ", data);
-  console.log('answer:', answer);
-
-  switch (re_cmd) {
-    //get one card
-    case '0f':
-      operater['0f'](data_hex, status);
-      break;
-    //read one card
-    case '02':
-      operater['02'](data_hex, status);
-      break;
-    //write one card
-    case '03':
-      operater['03'](data_hex, status);
-      break;
-    default:
-      console.log(`no case found, re_cmd ${re_cmd} is complete, status is ${status}.\n`);
-  }
-});
 
 let operater = {};
 
 operater['0f'] = async (data_hex, status) => {
   let payload = {};
   if (status === '00' || status === '01') {
-    await beep();
+    // await beep();
     let epc_length = parseInt(data_hex.slice(10, 12), 16) * 2;
     let epc_id_hex_str = data_hex.substr(12, epc_length);
     console.log('get card success, card epc-id: ', friendlyHex(epc_id_hex_str));
@@ -319,7 +302,7 @@ operater['0f'] = async (data_hex, status) => {
     console.log('get card fail.');
   }
   // emit event to send to invoker
-  if(socket_object.browser) {
+  if (socket_object.browser) {
     io.sockets.sockets[socket_object.browser.id].emit('rfid_get', payload, (data) => {
       console.log(data);
     });
@@ -341,7 +324,7 @@ operater['02'] = async (data_hex, status) => {
     console.log('read card fail.');
   }
   // emit event to send to invoker
-  if(socket_object.browser) {
+  if (socket_object.browser) {
     io.sockets.sockets[socket_object.browser.id].emit('rfid_read', payload, (data) => {
       console.log(data);
     });
@@ -358,9 +341,132 @@ operater['03'] = async (data_hex, status) => {
     console.log('write card fail.');
   }
   // emit event to send to invoker
-  if(socket_object.browser) {
+  if (socket_object.browser) {
     io.sockets.sockets[socket_object.browser.id].emit('rfid_write', payload, (data) => {
       console.log(data);
     });
   }
 };
+
+
+let getPort = async () => {
+
+  let ports = await SerialPort.list();
+  for (let i = 0; i < ports.length; i++) {
+    const [err, data] = await awaitWrap(testPort(ports[i].path));
+    if (err) {
+      console.log('fail: ', ports[i].path);
+    } else {
+      console.log('success: ', ports[i].path);
+      break;
+    }
+  }
+
+  if (!global_port_status) {
+    console.log('无可用 RFID Reader.');
+  }
+  return global_port_status;
+};
+
+let testPort = (path) => {
+  return new Promise(async (resolve, reject) => {
+    let temp_port = new SerialPort(
+      path,
+      {
+        baudRate: 57600
+      },
+      (err) => {
+        console.log('\nnew serialport: ', path);
+        if (err) {
+          console.log('new serialport error: ', err.message);
+          reject(true);
+        }
+      });
+
+    temp_port.on('error', (err) => {
+      console.log(`port ${path} error: ${err.message}`);
+    });
+
+    temp_port.on('open', () => {
+      console.log(`\nport ${path} is open.`);
+    });
+
+    temp_port.on('close', () => {
+      global_port = {};
+      global_port_status = false;
+      console.log(`port ${path} is close.`);
+      if (socket_object.browser) {
+        io.sockets.sockets[socket_object.browser.id].emit('no_reader', 'test', (data) => {
+          console.log(data);
+        });
+      }
+    });
+
+    temp_port.on('data', async (answer) => {
+      let data_hex = answer.toString('hex');
+      let re_cmd = data_hex.slice(4, 6);
+      let status = data_hex.slice(6, 8);
+      let data = data_hex.slice(8, -4);
+      console.log("\nre_cmd: ", re_cmd);
+      console.log("status: ", status);
+      console.log("data: ", friendlyHex(data));
+      console.log('answer:', answer);
+
+      switch (re_cmd) {
+        //get one card
+        case '0f':
+          await operater['0f'](data_hex, status);
+          break;
+        //read one card
+        case '02':
+          await operater['02'](data_hex, status);
+          break;
+        //write one card
+        case '03':
+          await operater['03'](data_hex, status);
+          break;
+        //test reader
+        case '21':
+          await (async () => {
+            console.log(`port ${path}, reader is ok.`);
+            global_port = temp_port;
+            global_port_status = true;
+            resolve(true);
+          })();
+          break;
+        default:
+          console.log(`no case found, re_cmd ${re_cmd} is complete, status is ${status}.\n`);
+          temp_port.close();
+          reject(true);
+      }
+
+    });
+
+    const buf = Buffer.from(crc16_chcek('04ff21'), 'hex');
+    temp_port.write(buf, (err) => {
+      if (err) {
+        console.log(`testPort send order 04 ff 21 error: ', ${err.message}`);
+        temp_port.close();
+        reject(true);
+      }
+    });
+
+    console.log();
+    // port 应答超时
+    await timeout(20);
+    if(!global_port_status){
+      console.log('应答超时.');
+      temp_port.close();
+      reject(true);
+    }
+  })
+};
+
+// init port
+(async () => {
+  await getPort();
+})();
+
+// (async () => {
+//   await beep();
+// })();
