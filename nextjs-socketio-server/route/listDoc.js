@@ -65,7 +65,7 @@ function ListDoc() {
     method: 'post',
   }, {
     onSuccess: (result, params) => {
-      // setBoxStatus(result[0].status);
+      setBoxStatus(result[0].status);
     }
   });
 
