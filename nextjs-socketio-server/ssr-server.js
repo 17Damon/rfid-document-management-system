@@ -184,7 +184,7 @@ app.prepare()
       console.log(socket.handshake.query.type + ' user connected socket id: ', socket.id);
       if (socket.handshake.query.type === 'box') {
         await updateBoxOnlineStatus(true);
-        if (socket_object.browser) {
+        if (!!(socket_object.browser) && !!(io.sockets.sockets[socket_object.browser.id].emit)) {
           io.sockets.sockets[socket_object.browser.id].emit('box_status_update', true, (data) => {
             console.log(data);
           });
@@ -194,7 +194,7 @@ app.prepare()
         console.log(socket.handshake.query.type + ' user disconnected');
         if (socket.handshake.query.type === 'box') {
           await updateBoxOnlineStatus(false);
-          if (socket_object.browser) {
+          if (!!(socket_object.browser) && !!(io.sockets.sockets[socket_object.browser.id].emit)) {
             io.sockets.sockets[socket_object.browser.id].emit('box_status_update', false, (data) => {
               console.log(data);
             });
