@@ -114,10 +114,16 @@ async function openDoor(box_id, operate_type, next_box_id) {
     console.log("openDoor error: ", e);
   }
 
-  //通知柜门打开
-  io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_open', 'test', (data) => {
-    console.log(data);
-  });
+  try {
+    if (!!(socket_object.browser) && !!(io.sockets.sockets[socket_object.browser.id])) {
+      //通知柜门打开
+      io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_open', 'test', (data) => {
+        console.log(data);
+      });
+    }
+  } catch (e) {
+    console.log("openDoor error: ", e);
+  }
 
   //更新柜门状态为打开
   await updateBoxDoorStatus(box_id, true);
@@ -152,11 +158,16 @@ async function closeDoor(box_id, box_status, operate_type, next_box_id) {
   } else {
     result = false;
   }
-
-  // 通知柜门关闭
-  io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_close', box_status, (data) => {
-    console.log(data);
-  });
+  try {
+    if (!!(socket_object.browser) && !!(io.sockets.sockets[socket_object.browser.id])) {
+      // 通知柜门关闭
+      io.sockets.sockets[socket_object['browser'].id].emit('notice_box_door_close', box_status, (data) => {
+        console.log(data);
+      });
+    }
+  } catch (e) {
+    console.log("closeDoor error: ", e);
+  }
   return result;
 
 }
@@ -190,7 +201,7 @@ app.prepare()
               console.log(data);
             });
           }
-        }catch (e) {
+        } catch (e) {
           console("emit:", e)
         }
 
@@ -205,7 +216,7 @@ app.prepare()
                 console.log(data);
               });
             }
-          }catch (e) {
+          } catch (e) {
             console("emit:", e)
           }
         }
